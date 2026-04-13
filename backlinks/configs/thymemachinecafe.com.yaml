@@ -1,0 +1,27 @@
+site_name: Thyme Machine Cafe
+target_domain: thymemachinecafe.com
+review_frequency: weekly
+review_day_utc: monday
+
+# Keep this list short and editable by hand.
+allowed_sources:
+  - gsc_links
+  - bing_webmaster
+  - analytics_referrals
+  - server_logs
+  - manual_checker
+
+# Basic manual heuristics for suspicious domains.
+suspicious_rules:
+  irrelevant_tlds:
+    - ".xyz"
+    - ".top"
+    - ".click"
+  suspicious_keywords:
+    - "casino"
+    - "viagra"
+    - "loan"
+    - "adult"
+
+notes: |
+  Step 2 is manual-first. No scraping or API integrations yet.
