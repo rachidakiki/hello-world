@@ -12,6 +12,7 @@ import csv
 import hashlib
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TRACKER = ROOT / "data" / "tracker.csv"
@@ -44,6 +45,7 @@ SOURCE_MAPPINGS = {
         "backlink_url": ["linking page", "source_url", "backlink_url", "linking_url"],
         "target_url": ["target page", "target_url", "your_page"],
         "anchor_text": ["anchor text", "anchor", "top linked text"],
+        "last_seen_date": ["last crawled"],
     },
     "bing": {
         "source_name": "bing_webmaster",
@@ -153,6 +155,35 @@ def dedupe_key(run_date: str, source_name: str, referring_domain: str, backlink_
     )
 
 
+def domain_from_backlink_url(backlink_url: str) -> str:
+    parsed = urlparse(backlink_url.strip())
+    host = parsed.hostname
+    if not host:
+        parsed = urlparse(f"//{backlink_url.strip()}")
+        host = parsed.hostname
+    return (host or "").lower().strip()
+
+
+def normalize_date_or_blank(value: str) -> str:
+    raw = value.strip()
+    if not raw:
+        return ""
+    formats = (
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%m/%d/%Y",
+        "%m/%d/%y",
+        "%b %d, %Y",
+        "%B %d, %Y",
+    )
+    for fmt in formats:
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return ""
+
+
 def main() -> None:
     args = parse_args()
     datetime.strptime(args.run_date, "%Y-%m-%d")
@@ -189,6 +220,18 @@ def main() -> None:
             backlink_url = pick_value(row, mapping["backlink_url"])
             target_url = pick_value(row, mapping["target_url"])
             anchor_text = pick_value(row, mapping["anchor_text"])
+            last_seen_date = args.run_date
+
+            if args.source == "gsc":
+                if not backlink_url:
+                    skipped += 1
+                    continue
+                if not referring_domain:
+                    referring_domain = domain_from_backlink_url(backlink_url)
+                gsc_last_crawled = pick_value(row, mapping.get("last_seen_date", []))
+                parsed_last_crawled = normalize_date_or_blank(gsc_last_crawled)
+                if parsed_last_crawled:
+                    last_seen_date = parsed_last_crawled
 
             if not referring_domain:
                 skipped += 1
@@ -212,7 +255,7 @@ def main() -> None:
                 "backlink_url": backlink_url,
                 "target_url": target_url,
                 "first_seen_date": first_seen_date,
-                "last_seen_date": args.run_date,
+                "last_seen_date": last_seen_date,
                 "status": "new" if is_new else "active",
                 "lost_reason": "",
                 "http_status": "",

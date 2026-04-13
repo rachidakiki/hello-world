@@ -122,6 +122,8 @@ Supported `--source` profiles:
 - `bing`
 - `manual`
 
+`gsc` profile note: when importing Google Search Console Links CSV files with `Linking page` and `Last crawled`, the importer derives `referring_domain` from `Linking page` and maps `Last crawled` to `last_seen_date` (if parseable).
+
 The script appends normalized rows to `backlinks/data/tracker.csv`.
 
 ### 3) Move processed file
@@ -352,4 +354,3 @@ When ready, a cron entry could run every Monday at 09:00 UTC:
 ### Later messaging handoff
 - Cron can run the weekly runner command to generate tracker/review/report/alert files.
 - A future notifier script can read `backlinks/alerts/YYYY-MM-DD-alert-summary.txt` and send it to Telegram/email.
-
