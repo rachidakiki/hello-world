@@ -48,6 +48,9 @@ Conservative review merge:
 ## `classify_tracker_rows.py`
 
 Writes explicit review schema (including `row_id` + approval fields).
+Lost-link suggestion thresholds are source-aware:
+- default sources: `--lost-threshold-days` (default 30)
+- GSC rows (`source_name=gsc_links`): `--gsc-lost-threshold-days` (default 120)
 
 ## `import_backlinks_csv.py`
 

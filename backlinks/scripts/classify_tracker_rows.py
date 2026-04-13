@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tracker", default=str(DEFAULT_TRACKER), help="Path to tracker CSV")
     p.add_argument("--run-date", help="Filter rows by run date (YYYY-MM-DD). Default: latest run_date in tracker")
     p.add_argument("--lost-threshold-days", type=int, default=30, help="Days since last_seen_date to suggest likely_lost")
+    p.add_argument(
+        "--gsc-lost-threshold-days",
+        type=int,
+        default=120,
+        help="Days since last_seen_date to suggest likely_lost for source_name=gsc_links",
+    )
     return p.parse_args()
 
 
@@ -74,9 +80,15 @@ def is_suspicious_domain(domain: str) -> tuple[bool, list[str]]:
     return (len(reasons) > 0), reasons
 
 
-def classify_row(row: dict[str, str], run_date: datetime, lost_threshold_days: int) -> tuple[str, list[str], str, str]:
+def classify_row(
+    row: dict[str, str],
+    run_date: datetime,
+    lost_threshold_days: int,
+    gsc_lost_threshold_days: int,
+) -> tuple[str, list[str], str, str]:
     reasons: list[str] = []
     status = (row.get("status", "") or "").strip().lower()
+    source_name = (row.get("source_name", "") or "").strip().lower()
     domain = (row.get("referring_domain", "") or "").strip().lower()
     last_seen = parse_date(row.get("last_seen_date", ""))
     http_status_raw = (row.get("http_status", "") or "").strip()
@@ -92,8 +104,13 @@ def classify_row(row: dict[str, str], run_date: datetime, lost_threshold_days: i
         return "needs_review", ["missing_last_seen_date"], "unknown", "false"
 
     age_days = (run_date - last_seen).days
-    if age_days > lost_threshold_days:
-        return "likely_lost", [f"stale_last_seen:{age_days}d"], "lost", "false"
+    stale_threshold = gsc_lost_threshold_days if source_name == "gsc_links" else lost_threshold_days
+    if age_days > stale_threshold:
+        if source_name == "gsc_links":
+            reason = f"stale_last_seen_gsc:{age_days}d>{stale_threshold}d"
+        else:
+            reason = f"stale_last_seen:{age_days}d>{stale_threshold}d"
+        return "likely_lost", [reason], "lost", "false"
 
     if suspicious:
         reasons.extend(suspicious_reasons)
@@ -151,7 +168,12 @@ def main() -> None:
     counts: Counter[str] = Counter()
 
     for row in selected:
-        label, reasons, suggested_status, suggested_suspicious_flag = classify_row(row, run_date, args.lost_threshold_days)
+        label, reasons, suggested_status, suggested_suspicious_flag = classify_row(
+            row,
+            run_date,
+            args.lost_threshold_days,
+            args.gsc_lost_threshold_days,
+        )
         counts[label] += 1
         review_rows.append(
             {
