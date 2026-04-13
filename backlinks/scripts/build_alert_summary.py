@@ -12,27 +12,20 @@ import csv
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORTS_DIR = ROOT / "reports"
 ALERTS_DIR = ROOT / "alerts"
 REVIEWS_DIR = ROOT / "reviews"
+TRACKER_PATH = ROOT / "data" / "tracker.csv"
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Build concise alert summary from weekly markdown report")
+    p = argparse.ArgumentParser(description="Build concise draft alert summary from tracker + review CSV")
     p.add_argument("--run-date", required=True, help="Run date (YYYY-MM-DD)")
-    p.add_argument("--report", help="Optional report file path override")
     return p.parse_args()
 
 
-def parse_count(lines: list[str], label: str) -> int:
-    prefix = f"- {label}:"
-    for line in lines:
-        s = line.strip()
-        if s.startswith(prefix):
-            value = s.split(":", 1)[1].strip()
-            if value.isdigit():
-                return int(value)
-    return 0
+def count_raw_rows(run_date: str) -> int:
+    with TRACKER_PATH.open(newline="", encoding="utf-8") as f:
+        return sum(1 for row in csv.DictReader(f) if (row.get("run_date", "") or "").strip() == run_date)
 
 
 def load_review_counts(run_date: str) -> dict[str, int]:
@@ -85,11 +78,7 @@ def overall_status(lost_count: int, broken_count: int, suspicious_count: int, ne
 
 def main() -> None:
     args = parse_args()
-    report_path = Path(args.report) if args.report else (REPORTS_DIR / f"{args.run_date}-weekly.md")
-    lines = report_path.read_text(encoding="utf-8").splitlines()
-
-    total = parse_count(lines, "Total domains")
-    raw_rows = parse_count(lines, "Raw imported rows")
+    raw_rows = count_raw_rows(args.run_date)
     review_counts = load_review_counts(args.run_date)
     normal_count = review_counts["likely_normal"]
     lost_count = review_counts["likely_lost"]
@@ -101,19 +90,20 @@ def main() -> None:
     status = overall_status(lost_count, broken_count, suspicious_count, needs_review_count)
 
     summary = [
-        f"Backlink Weekly Alert ({args.run_date})",
-        f"Reviewed: {total} domains",
-        f"Raw import rows: {raw_rows}",
-        (
-            "Suggested counts (pre-approval) → "
-            f"Normal: {normal_count} | Lost: {lost_count} | Broken: {broken_count} | "
-            f"Suspicious: {suspicious_count} | Needs review: {needs_review_count}"
-        ),
-        "Top actions:",
+        "Backlink Weekly Draft Alert",
+        f"Run date: {args.run_date}",
+        f"Raw rows imported: {raw_rows}",
+        "Suggested classification counts (pre-approval):",
+        f"- Normal: {normal_count}",
+        f"- Suspicious: {suspicious_count}",
+        f"- Lost: {lost_count}",
+        f"- Broken: {broken_count}",
+        f"- Needs_review: {needs_review_count}",
+        "Top action items:",
         f"1) {actions[0]}",
         f"2) {actions[1] if len(actions) > 1 else '—'}",
         f"3) {actions[2] if len(actions) > 2 else '—'}",
-        f"Overall status: {status}",
+        f"Overall draft status: {status}",
     ]
 
     ALERTS_DIR.mkdir(parents=True, exist_ok=True)

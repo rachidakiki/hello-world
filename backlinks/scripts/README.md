@@ -16,6 +16,7 @@ Truth model for draft artifacts:
 - Draft report and alert include **raw import snapshot counts** from `tracker.csv`.
 - They also include **suggested classification counts** from `reviews/YYYY-MM-DD-classification-review.csv` (pre-approval).
 - Final approved truth is only established after review decisions are applied back to tracker.
+- `build_alert_summary.py` reads tracker + review files directly (not report text parsing), so draft alert counts stay aligned with classification output.
 
 ## `run_finalize_after_review.py`
 
