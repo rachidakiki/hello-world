@@ -12,6 +12,11 @@ Prep runner (draft artifacts):
 3. draft report
 4. draft alert
 
+Truth model for draft artifacts:
+- Draft report and alert include **raw import snapshot counts** from `tracker.csv`.
+- They also include **suggested classification counts** from `reviews/YYYY-MM-DD-classification-review.csv` (pre-approval).
+- Final approved truth is only established after review decisions are applied back to tracker.
+
 ## `run_finalize_after_review.py`
 
 Finalize runner (after human review approvals):

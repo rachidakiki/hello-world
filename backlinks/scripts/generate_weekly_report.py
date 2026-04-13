@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TRACKER_PATH = ROOT / "data" / "tracker.csv"
+REVIEWS_DIR = ROOT / "reviews"
 REPORTS_DIR = ROOT / "reports"
 
 
@@ -50,7 +51,20 @@ def boolish(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y"}
 
 
-def make_report(rows_for_date: list[dict[str, str]], run_date: str) -> str:
+def load_review_counts(run_date: str) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    review_path = REVIEWS_DIR / f"{run_date}-classification-review.csv"
+    if not review_path.exists():
+        return counts
+    with review_path.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            label = (row.get("classification_label", "") or "").strip()
+            if label:
+                counts[label] += 1
+    return counts
+
+
+def make_report(rows_for_date: list[dict[str, str]], run_date: str, review_counts: Counter[str]) -> str:
     domains = sorted({r.get("referring_domain", "").strip() for r in rows_for_date if r.get("referring_domain", "").strip()})
     total_domains = len(domains)
 
@@ -71,12 +85,20 @@ def make_report(rows_for_date: list[dict[str, str]], run_date: str) -> str:
         f"- Run date: {run_date}",
         f"- Sources in tracker snapshot: {', '.join(sources) if sources else 'n/a'}",
         "",
-        "## Counts",
+        "## Counts (Raw import snapshot from tracker)",
+        f"- Raw imported rows: {len(rows_for_date)}",
         f"- Total domains: {total_domains}",
-        f"- New domains: {by_status.get('new', 0)}",
-        f"- Lost domains: {by_status.get('lost', 0)}",
-        f"- Broken domains: {by_status.get('broken', 0)}",
-        f"- Suspicious domains: {len({r.get('referring_domain', '').strip() for r in suspicious_rows if r.get('referring_domain', '').strip()})}",
+        f"- Tracker new domains: {by_status.get('new', 0)}",
+        f"- Tracker lost domains: {by_status.get('lost', 0)}",
+        f"- Tracker broken domains: {by_status.get('broken', 0)}",
+        f"- Tracker suspicious domains: {len({r.get('referring_domain', '').strip() for r in suspicious_rows if r.get('referring_domain', '').strip()})}",
+        "",
+        "## Counts (Suggested classification from review CSV, pre-approval)",
+        f"- Suggested likely_normal: {review_counts.get('likely_normal', 0)}",
+        f"- Suggested likely_lost: {review_counts.get('likely_lost', 0)}",
+        f"- Suggested likely_broken: {review_counts.get('likely_broken', 0)}",
+        f"- Suggested likely_suspicious: {review_counts.get('likely_suspicious', 0)}",
+        f"- Suggested needs_review: {review_counts.get('needs_review', 0)}",
         "",
         "## Domain Details",
     ]
@@ -95,7 +117,9 @@ def make_report(rows_for_date: list[dict[str, str]], run_date: str) -> str:
     lines.extend([
         "",
         "## Notes",
-        "- This report is generated from local tracker data only.",
+        "- Raw tracker counts are immediate import snapshot metrics.",
+        "- Suggested counts are pulled from reviews/YYYY-MM-DD-classification-review.csv and are pre-approval.",
+        "- Final approved counts only become authoritative after review decisions are applied to tracker.",
         "- No scraping or external API calls are used in Step 3.",
     ])
 
@@ -107,8 +131,9 @@ def main() -> None:
     rows = load_rows(TRACKER_PATH)
     run_date = select_run_date(rows, run_date_override)
     rows_for_date = [r for r in rows if r.get("run_date", "").strip() == run_date]
+    review_counts = load_review_counts(run_date)
 
-    report_text = make_report(rows_for_date, run_date)
+    report_text = make_report(rows_for_date, run_date, review_counts)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     output_path = REPORTS_DIR / f"{run_date}-weekly.md"
     output_path.write_text(report_text, encoding="utf-8")

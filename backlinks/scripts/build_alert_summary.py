@@ -8,11 +8,13 @@ No network sending in this step.
 from __future__ import annotations
 
 import argparse
+import csv
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = ROOT / "reports"
 ALERTS_DIR = ROOT / "alerts"
+REVIEWS_DIR = ROOT / "reviews"
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +35,26 @@ def parse_count(lines: list[str], label: str) -> int:
     return 0
 
 
-def build_actions(new_count: int, lost_count: int, broken_count: int, suspicious_count: int) -> list[str]:
+def load_review_counts(run_date: str) -> dict[str, int]:
+    counts = {
+        "likely_normal": 0,
+        "likely_lost": 0,
+        "likely_broken": 0,
+        "likely_suspicious": 0,
+        "needs_review": 0,
+    }
+    review_path = REVIEWS_DIR / f"{run_date}-classification-review.csv"
+    if not review_path.exists():
+        return counts
+    with review_path.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            label = (row.get("classification_label", "") or "").strip()
+            if label in counts:
+                counts[label] += 1
+    return counts
+
+
+def build_actions(lost_count: int, broken_count: int, suspicious_count: int, needs_review_count: int, normal_count: int) -> list[str]:
     actions: list[str] = []
     if broken_count > 0:
         actions.append("Inspect broken links and confirm HTTP errors")
@@ -41,18 +62,22 @@ def build_actions(new_count: int, lost_count: int, broken_count: int, suspicious
         actions.append("Recover lost links (reach out or re-check source pages)")
     if suspicious_count > 0:
         actions.append("Review suspicious domains and decide keep/watch/disavow")
-    if new_count > 0:
-        actions.append("Validate new domains for quality and relevance")
+    if needs_review_count > 0:
+        actions.append("Resolve rows marked needs_review before approval")
+    if normal_count > 0:
+        actions.append("Spot-check likely_normal rows and approve in batches")
     if not actions:
         actions.append("No urgent actions — continue weekly monitoring")
     return actions[:3]
 
 
-def overall_status(lost_count: int, broken_count: int, suspicious_count: int) -> str:
+def overall_status(lost_count: int, broken_count: int, suspicious_count: int, needs_review_count: int) -> str:
     if broken_count > 0:
         return "INSPECT BROKEN LINKS"
     if lost_count > 0:
         return "RECOVER LOST LINKS"
+    if needs_review_count > 0:
+        return "COMPLETE REVIEW QUEUE"
     if suspicious_count > 0:
         return "REVIEW SUSPICIOUS DOMAINS"
     return "NO ISSUES"
@@ -64,18 +89,26 @@ def main() -> None:
     lines = report_path.read_text(encoding="utf-8").splitlines()
 
     total = parse_count(lines, "Total domains")
-    new_count = parse_count(lines, "New domains")
-    lost_count = parse_count(lines, "Lost domains")
-    broken_count = parse_count(lines, "Broken domains")
-    suspicious_count = parse_count(lines, "Suspicious domains")
+    raw_rows = parse_count(lines, "Raw imported rows")
+    review_counts = load_review_counts(args.run_date)
+    normal_count = review_counts["likely_normal"]
+    lost_count = review_counts["likely_lost"]
+    broken_count = review_counts["likely_broken"]
+    suspicious_count = review_counts["likely_suspicious"]
+    needs_review_count = review_counts["needs_review"]
 
-    actions = build_actions(new_count, lost_count, broken_count, suspicious_count)
-    status = overall_status(lost_count, broken_count, suspicious_count)
+    actions = build_actions(lost_count, broken_count, suspicious_count, needs_review_count, normal_count)
+    status = overall_status(lost_count, broken_count, suspicious_count, needs_review_count)
 
     summary = [
         f"Backlink Weekly Alert ({args.run_date})",
         f"Reviewed: {total} domains",
-        f"Counts → New: {new_count} | Lost: {lost_count} | Broken: {broken_count} | Suspicious: {suspicious_count}",
+        f"Raw import rows: {raw_rows}",
+        (
+            "Suggested counts (pre-approval) → "
+            f"Normal: {normal_count} | Lost: {lost_count} | Broken: {broken_count} | "
+            f"Suspicious: {suspicious_count} | Needs review: {needs_review_count}"
+        ),
         "Top actions:",
         f"1) {actions[0]}",
         f"2) {actions[1] if len(actions) > 1 else '—'}",
