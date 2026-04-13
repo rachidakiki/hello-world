@@ -143,6 +143,16 @@ def read_source_rows(path: Path) -> list[dict[str, str]]:
         return [{norm_header(k): (v or "") for k, v in raw.items()} for raw in reader]
 
 
+def dedupe_key(run_date: str, source_name: str, referring_domain: str, backlink_url: str, target_url: str) -> tuple[str, str, str, str, str]:
+    return (
+        run_date.strip(),
+        source_name.strip(),
+        referring_domain.strip().lower(),
+        backlink_url.strip(),
+        target_url.strip(),
+    )
+
+
 def main() -> None:
     args = parse_args()
     datetime.strptime(args.run_date, "%Y-%m-%d")
@@ -158,7 +168,17 @@ def main() -> None:
 
     imported = 0
     skipped = 0
-    written_keys: set[tuple[str, str]] = set()
+    source_name = mapping["source_name"]
+    written_keys: set[tuple[str, str, str, str, str]] = {
+        dedupe_key(
+            row.get("run_date", ""),
+            row.get("source_name", ""),
+            row.get("referring_domain", ""),
+            row.get("backlink_url", ""),
+            row.get("target_url", ""),
+        )
+        for row in tracker_rows
+    }
 
     source_rows = read_source_rows(source_path)
     with tracker_path.open("a", newline="", encoding="utf-8") as f:
@@ -174,17 +194,15 @@ def main() -> None:
                 skipped += 1
                 continue
 
-            dedupe_key = (referring_domain, backlink_url)
-            if dedupe_key in written_keys:
+            row_dedupe_key = dedupe_key(args.run_date, source_name, referring_domain, backlink_url, target_url)
+            if row_dedupe_key in written_keys:
                 skipped += 1
                 continue
-            written_keys.add(dedupe_key)
+            written_keys.add(row_dedupe_key)
 
             existing_first_seen = seen_domains.get(referring_domain)
             is_new = existing_first_seen is None
             first_seen_date = args.run_date if is_new else existing_first_seen
-            source_name = mapping["source_name"]
-
             tracker_row = {
                 "row_id": make_row_id(args.run_date, source_name, referring_domain, backlink_url, target_url),
                 "run_date": args.run_date,
