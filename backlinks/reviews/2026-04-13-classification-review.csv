@@ -1,0 +1,3 @@
+run_date,referring_domain,current_status,current_suspicious_flag,classification_label,suggested_status,suggested_suspicious_flag,reasons,notes
+2026-04-13,localfoodblog.com,active,false,likely_normal,active,false,no_high_risk_signals,human_review_required
+2026-04-13,cheap-casino-links.xyz,suspicious,true,likely_suspicious,suspicious,true,suspicious_tld|keyword:casino,human_review_required
